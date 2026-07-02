@@ -34,10 +34,10 @@ below.
 
 ```
 hermex/
-├── ios/                    # everything Apple moves here, history preserved via git mv
+├── ios/                    # everything Apple moved here, history preserved via git mv
 │   ├── HermesMobile/  HermesMobile.xcodeproj/  HermesMobileTests/
 │   ├── HermesShareExtension/  HermesLiveActivityWidget/
-│   ├── Config/  .xcodebuildmcp/  ci/
+│   ├── Config/  ci/        # xcconfigs + TestFlight export options
 │   └── AGENTS.md           # iOS-specific rules (tooling, simulator, TestFlight)
 ├── android/                # self-contained Gradle project (phase 0 scaffolds this)
 │   ├── app/  gradle/  build.gradle.kts  settings.gradle.kts  gradlew
@@ -45,10 +45,12 @@ hermex/
 ├── shared/
 │   └── fixtures/           # recorded JSON contract fixtures, consumed by BOTH test suites
 ├── docs/                   # cross-platform docs (this plan, agents conventions)
+├── scripts/                # repo-level helpers (upstream-watch, webui-json, size check)
+├── .xcodebuildmcp/         # stays at root — the tool reads config from the workspace root
 ├── PROJECT_SPEC.md         # product + API contract (platform-neutral sections stay root-level)
 ├── UPSTREAM_TESTED_SHA     # ONE pin for both clients
 ├── CONTRACT_TESTS.md  AGENTS.md  CLAUDE.md  README.md  …
-└── .github/workflows/      # path-filtered: ios.yml, android.yml, contract.yml
+└── .github/workflows/      # path-filtered: pr-ci (iOS), android (later), TestFlight
 ```
 
 Rules that make it work:
@@ -75,20 +77,27 @@ Rules that make it work:
 
 ### Migration steps (before Android phase 0)
 
-- [ ] **PR A — move iOS under `ios/`.** Pure `git mv` (history follows), then fix
-      the handful of path references: CI workflow paths, `.xcodebuildmcp/config.yaml`
-      location, doc links, and the `xcodebuild -project` path in README/DEVELOPMENT/
-      TESTFLIGHT. The `.xcodeproj` itself uses relative paths inside the moved tree,
-      so it needs no surgery. Verify with a full build + test run before merge.
-- [ ] **PR B — hoist the shared contract.** Create `shared/fixtures/`, move/record
-      the contract-test fixture corpus there, point the XCTest suite at it, keep
-      `UPSTREAM_TESTED_SHA` + `CONTRACT_TESTS.md` at root, split `AGENTS.md` into
-      root + `ios/` layers.
-- [ ] **PR C — scaffold `android/`** (this is phase 0 of §4) with its own
+- [x] **Step A — move iOS under `ios/`.** Done: pure `git mv` (history follows) of
+      `HermesMobile*`, both extensions, `Config/`, and `ci/`; path references fixed
+      in the three workflows, `.xcodebuildmcp/config.yaml` (kept at root, pointed at
+      `ios/`), `scripts/check-swift-file-sizes`, `scripts/upstream-watch`,
+      `.gitignore`, and the command paths in README/DEVELOPMENT/TESTFLIGHT/
+      CONTRIBUTING/PR template. The `.xcodeproj` uses relative paths inside the
+      moved tree, so it needed no surgery. Verified by PR CI's full build + test run
+      (no Xcode available in the migration environment).
+- [x] **Step B — hoist the shared contract.** Done: `shared/fixtures/` created with
+      recording rules (the corpus itself is recorded when Android contract tests
+      need it — today's iOS fixtures are inline in Swift test code);
+      `UPSTREAM_TESTED_SHA` + `CONTRACT_TESTS.md` stay at root; `AGENTS.md` split
+      into a platform-neutral root layer + `ios/AGENTS.md` (with an `ios/CLAUDE.md`
+      symlink mirroring the root pattern).
+- [ ] **Step C — scaffold `android/`** (this is phase 0 of §4) with its own
       `AGENTS.md`, locked dependency list, and path-filtered CI job.
 
-Do the migration as its own small PRs *before* any Android code lands — mixing the
-iOS move with Android scaffolding makes both impossible to review.
+Steps A and B landed together on the plan PR at the maintainer's request; step C
+should still be its own PR so the Android scaffold is reviewable in isolation.
+`PROJECT_SPEC.md` §7's file layout was left untouched — it describes the tree
+*inside* the app project, which is unchanged relative to `ios/`.
 
 ---
 

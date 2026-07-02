@@ -839,5 +839,5 @@ UPSTREAM_TESTED_SHA / UPSTREAM_TESTED_TAG / TESTED_AGAINST_VERSION:
   duplicate the values here — they rot.
 APP_VERSION / APP_BUILD:
   read MARKETING_VERSION / CURRENT_PROJECT_VERSION from
-  `HermesMobile.xcodeproj/project.pbxproj`.
+  `ios/HermesMobile.xcodeproj/project.pbxproj`.
 ```

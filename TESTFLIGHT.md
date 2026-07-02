@@ -14,7 +14,7 @@ As of 2026-05-30:
 - The GitHub Actions `External TestFlight` workflow is available and has uploaded an external-capable production build.
 - Current external-capable upload: version `1.0.1`, build `1`.
 - Verified workflow evidence: run `26833031469` / `External TestFlight from master` completed successfully from `master` at `9e8078215586643eb11c519bf9c73dfa103070ea`.
-- Run `26833031469` selected build number `1`, used `ci/ExternalTestFlightExportOptions.plist`, archived successfully, and uploaded to App Store Connect successfully.
+- Run `26833031469` selected build number `1`, used `ios/ci/ExternalTestFlightExportOptions.plist`, archived successfully, and uploaded to App Store Connect successfully.
 - Owner still needs to wait for App Store Connect processing, confirm build `1.0.1 (1)` appears and is not internal-only, and resolve any compliance prompts before using it for external testing or App Review replacement.
 - Earlier external-capable build `1.0 (32)` remains the repo-recorded App Review submission unless the owner manually replaces it in App Store Connect.
 - The local release branch cleanup is complete; the feature-gap and crash-investigation notes were committed, and the whitespace-only `AGENTS.md` change was removed.
@@ -102,14 +102,14 @@ Purpose: create a safe way to upload a build that can be submitted to external T
 
 Current state:
 
-- `.github/workflows/internal-testflight.yml` uses `ci/TestFlightExportOptions.plist`.
-- `ci/TestFlightExportOptions.plist` sets `testFlightInternalTestingOnly = true`.
+- `.github/workflows/internal-testflight.yml` uses `ios/ci/TestFlightExportOptions.plist`.
+- `ios/ci/TestFlightExportOptions.plist` sets `testFlightInternalTestingOnly = true`.
 - Apple marks those builds internal-only; they cannot be submitted for external testing or customers.
 
 Preferred implementation:
 
 1. Keep the existing internal-only workflow unchanged for quick owner smoke builds.
-2. Add a separate external-capable export options plist, for example `ci/ExternalTestFlightExportOptions.plist`, with:
+2. Add a separate external-capable export options plist, for example `ios/ci/ExternalTestFlightExportOptions.plist`, with:
    - `method = app-store-connect`
    - `destination = upload`
    - `signingStyle = automatic`
@@ -128,10 +128,10 @@ Preferred implementation:
 Validation:
 
 ```zsh
-plutil -lint ci/ExternalTestFlightExportOptions.plist
+plutil -lint ios/ci/ExternalTestFlightExportOptions.plist
 ruby -e 'require "yaml"; YAML.load_file(".github/workflows/external-testflight.yml"); puts "YAML OK"'
 rg -n "testFlightInternalTestingOnly|EXTERNAL_REVIEW|external-testflight" ci .github/workflows DEVELOPMENT.md TESTFLIGHT.md
-xcodebuild -project HermesMobile.xcodeproj -scheme HermesMobile -configuration Release -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
+xcodebuild -project ios/HermesMobile.xcodeproj -scheme HermesMobile -configuration Release -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
 git diff --check
 ```
 
@@ -144,8 +144,8 @@ Current result as of 2026-05-15:
 
 - Complete locally on `codex/testflight-doc-reconcile`.
 - `.github/workflows/external-testflight.yml` adds a manually gated `External TestFlight` upload workflow with `confirm_external_review = EXTERNAL_REVIEW`, `external-testflight` environment gating, `master`-only enforcement, and no tester invites.
-- `ci/ExternalTestFlightExportOptions.plist` uploads to App Store Connect without `testFlightInternalTestingOnly`.
-- The existing `Internal TestFlight` workflow and `ci/TestFlightExportOptions.plist` remain internal-only.
+- `ios/ci/ExternalTestFlightExportOptions.plist` uploads to App Store Connect without `testFlightInternalTestingOnly`.
+- The existing `Internal TestFlight` workflow and `ios/ci/TestFlightExportOptions.plist` remain internal-only.
 
 ### 4. Confirm Apple Developer Portal Capabilities
 
@@ -168,8 +168,8 @@ Local validation:
 
 ```zsh
 plutil -p HermesMobile/Resources/HermesMobile.entitlements
-plutil -p HermesShareExtension/Resources/HermesShareExtension.entitlements
-xcodebuild -showBuildSettings -project HermesMobile.xcodeproj -scheme HermesMobile -configuration Release | rg "PRODUCT_BUNDLE_IDENTIFIER|DEVELOPMENT_TEAM|CODE_SIGN_ENTITLEMENTS|CODE_SIGN_STYLE"
+plutil -p ios/HermesShareExtension/Resources/HermesShareExtension.entitlements
+xcodebuild -showBuildSettings -project ios/HermesMobile.xcodeproj -scheme HermesMobile -configuration Release | rg "PRODUCT_BUNDLE_IDENTIFIER|DEVELOPMENT_TEAM|CODE_SIGN_ENTITLEMENTS|CODE_SIGN_STYLE"
 ```
 
 Exit criteria:
@@ -180,7 +180,7 @@ Current local result as of 2026-05-15:
 
 - Local validation passed on `codex/testflight-doc-reconcile`.
 - App target Release settings use automatic signing, Team ID `6GYD9C9N6R`, bundle ID `com.uzairansar.hermesmobile`, and `HermesMobile/Resources/HermesMobile.entitlements`.
-- Share extension Release settings use automatic signing, Team ID `6GYD9C9N6R`, bundle ID `com.uzairansar.hermesmobile.shareextension`, and `HermesShareExtension/Resources/HermesShareExtension.entitlements`.
+- Share extension Release settings use automatic signing, Team ID `6GYD9C9N6R`, bundle ID `com.uzairansar.hermesmobile.shareextension`, and `ios/HermesShareExtension/Resources/HermesShareExtension.entitlements`.
 - Both entitlement files include `group.com.uzairansar.hermesmobile`.
 - Owner confirmed the Apple Developer Portal and App Store Connect API key items on 2026-05-15.
 
@@ -329,16 +329,16 @@ Commands:
 xcrun simctl list devices available
 git status --short --branch
 git diff --check
-plutil -lint HermesMobile/Resources/Info.plist HermesMobile/Resources/PrivacyInfo.xcprivacy HermesShareExtension/Resources/Info.plist HermesShareExtension/Resources/PrivacyInfo.xcprivacy
-xcodebuild test -project HermesMobile.xcodeproj -scheme HermesMobile -destination 'platform=iOS Simulator,name=iPhone 17'
-xcodebuild -project HermesMobile.xcodeproj -scheme HermesMobile -configuration Release -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
+plutil -lint ios/HermesMobile/Resources/Info.plist ios/HermesMobile/Resources/PrivacyInfo.xcprivacy ios/HermesShareExtension/Resources/Info.plist ios/HermesShareExtension/Resources/PrivacyInfo.xcprivacy
+xcodebuild test -project ios/HermesMobile.xcodeproj -scheme HermesMobile -destination 'platform=iOS Simulator,name=iPhone 17'
+xcodebuild -project ios/HermesMobile.xcodeproj -scheme HermesMobile -configuration Release -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
 ```
 
 If simulator launch is stale:
 
 ```zsh
 xcrun simctl shutdown all
-xcodebuild test -project HermesMobile.xcodeproj -scheme HermesMobile -destination 'platform=iOS Simulator,name=iPhone 17'
+xcodebuild test -project ios/HermesMobile.xcodeproj -scheme HermesMobile -destination 'platform=iOS Simulator,name=iPhone 17'
 ```
 
 Exit criteria:
@@ -355,9 +355,9 @@ Current Step 7 status as of 2026-05-15:
 - iPhone 17 Simulator is available.
 - `git diff --check` passed.
 - plist lint passed for app/share-extension Info.plist and privacy manifests.
-- `xcodebuild test -project HermesMobile.xcodeproj -scheme HermesMobile -destination 'platform=iOS Simulator,name=iPhone 17'` completed with `TEST SUCCEEDED`.
+- `xcodebuild test -project ios/HermesMobile.xcodeproj -scheme HermesMobile -destination 'platform=iOS Simulator,name=iPhone 17'` completed with `TEST SUCCEEDED`.
 - XCTest result bundle: `~/Library/Developer/Xcode/DerivedData/HermesMobile-dodyrzzipcxecicrwnfmjwjkqngb/Logs/Test/Test-HermesMobile-2026.05.14_22-45-59--0400.xcresult`.
-- `xcodebuild -project HermesMobile.xcodeproj -scheme HermesMobile -configuration Release -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build` completed with `BUILD SUCCEEDED`.
+- `xcodebuild -project ios/HermesMobile.xcodeproj -scheme HermesMobile -configuration Release -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build` completed with `BUILD SUCCEEDED`.
 
 ### 8. Run Live Authenticated Server Smoke
 
@@ -563,7 +563,7 @@ Current Step 12 update as of 2026-05-27:
   - job: `Archive and Upload`, conclusion `success`;
   - marketing version: `1.0`;
   - build number: `30`;
-  - export options: `ci/ExternalTestFlightExportOptions.plist`;
+  - export options: `ios/ci/ExternalTestFlightExportOptions.plist`;
   - archive and App Store Connect upload succeeded.
 - Current uploaded RC candidate is build `1.0 (30)`.
 - Owner reported App Store Connect looks good for build `1.0 (30)`. Next owner decision is whether to submit build `1.0 (30)` for Beta App Review or hold it for internal/external stabilization first.
@@ -578,7 +578,7 @@ Current Step 12 update as of 2026-05-30:
   - job: `Archive and Upload`, conclusion `success`;
   - marketing version: `1.0`;
   - build number: `33`;
-  - export options: `ci/ExternalTestFlightExportOptions.plist`;
+  - export options: `ios/ci/ExternalTestFlightExportOptions.plist`;
   - archive and App Store Connect upload succeeded.
 - Current uploaded external-capable build is `1.0 (33)`.
 - The workflow upload did not assign external tester groups, submit Beta App Review, replace the existing App Review build, invite testers, or release the app.
@@ -597,7 +597,7 @@ Current Step 12 update as of 2026-06-02:
   - job: `Archive and Upload`, conclusion `success`;
   - marketing version: `1.0.1`;
   - build number: `1`;
-  - export options: `ci/ExternalTestFlightExportOptions.plist`;
+  - export options: `ios/ci/ExternalTestFlightExportOptions.plist`;
   - archive and App Store Connect upload succeeded.
 - Current uploaded external-capable build is `1.0.1 (1)`.
 - The workflow upload did not assign external tester groups, submit Beta App Review, replace the existing App Review build, invite testers, or release the app.
@@ -682,8 +682,8 @@ Before each new external build:
 ```zsh
 git status --short --branch
 git diff --check
-xcodebuild test -project HermesMobile.xcodeproj -scheme HermesMobile -destination 'platform=iOS Simulator,name=iPhone 17'
-xcodebuild -project HermesMobile.xcodeproj -scheme HermesMobile -configuration Release -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
+xcodebuild test -project ios/HermesMobile.xcodeproj -scheme HermesMobile -destination 'platform=iOS Simulator,name=iPhone 17'
+xcodebuild -project ios/HermesMobile.xcodeproj -scheme HermesMobile -configuration Release -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
 ```
 
 ## App Store Connect Review Notes Template

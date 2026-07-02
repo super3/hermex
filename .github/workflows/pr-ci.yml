@@ -63,7 +63,7 @@ jobs:
     timeout-minutes: 90
 
     env:
-      PROJECT_PATH: HermesMobile.xcodeproj
+      PROJECT_PATH: ios/HermesMobile.xcodeproj
       SCHEME: HermesMobile
 
     steps:
