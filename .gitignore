@@ -57,3 +57,7 @@ fastlane/test_output/
 
 # Local session-handoff state (read at session start, overwritten at wrap-up; not tracked)
 /CURRENT.md
+
+# Python bytecode (repo scripts)
+__pycache__/
+*.pyc
