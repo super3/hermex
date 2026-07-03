@@ -1,6 +1,7 @@
 package com.hermexapp.android.features.panels
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -441,35 +442,38 @@ private fun InsightsPanel(state: PanelsViewModel.UiState) {
         CenteredNote("No usage data for this period.")
         return
     }
+    // iOS Insights is an inset-grouped List: uppercase section headers above
+    // white cards (secondarySystemGroupedBackground) on a gray grouped canvas.
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(palette.groupedCanvas)
             .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
-        Surface(color = palette.card, shape = MaterialTheme.shapes.large) {
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(
-                    "Last ${insights.periodDays ?: 30} days",
-                    style = MaterialTheme.typography.titleSmall,
-                )
-                StatRow("Sessions", insights.totalSessions?.toString())
-                StatRow("Messages", insights.totalMessages?.toString())
-                StatRow("Tokens", insights.totalTokens?.let { formatCount(it) })
-                StatRow("Cost", insights.totalCost?.let { "$%.2f".format(it) })
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            GroupedSectionHeader("Last ${insights.periodDays ?: 30} days")
+            Surface(color = palette.groupedCard, shape = MaterialTheme.shapes.small) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    StatRow("Sessions", insights.totalSessions?.toString())
+                    StatRow("Messages", insights.totalMessages?.toString())
+                    StatRow("Tokens", insights.totalTokens?.let { formatCount(it) })
+                    StatRow("Cost", insights.totalCost?.let { "$%.2f".format(it) })
+                }
             }
         }
         if (!insights.models.isNullOrEmpty()) {
-            Surface(color = palette.card, shape = MaterialTheme.shapes.large) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                GroupedSectionHeader("By model")
+                Surface(color = palette.groupedCard, shape = MaterialTheme.shapes.small) {
                 Column(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text("By model", style = MaterialTheme.typography.titleSmall)
                     insights.models.forEach { model ->
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -493,9 +497,21 @@ private fun InsightsPanel(state: PanelsViewModel.UiState) {
                         }
                     }
                 }
+                }
             }
         }
     }
+}
+
+/** iOS inset-grouped section header: small uppercase secondary label above a card. */
+@Composable
+private fun GroupedSectionHeader(text: String) {
+    Text(
+        text.uppercase(),
+        style = MaterialTheme.typography.labelMedium,
+        color = LocalHermexPalette.current.textSecondary,
+        modifier = Modifier.padding(start = 16.dp),
+    )
 }
 
 @Composable
