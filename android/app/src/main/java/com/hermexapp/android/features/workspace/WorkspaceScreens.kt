@@ -1,7 +1,9 @@
 package com.hermexapp.android.features.workspace
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,9 +17,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -25,6 +29,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
@@ -161,6 +168,14 @@ fun GitScreen(viewModel: WorkspaceViewModel, onClose: () -> Unit) {
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
+            state.noticeMessage?.let {
+                Text(
+                    it,
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    color = palette.accent,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
 
             val diff = state.openDiff
             val status = state.gitStatus
@@ -180,9 +195,14 @@ fun GitScreen(viewModel: WorkspaceViewModel, onClose: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun GitStatusList(status: com.hermexapp.android.model.GitStatus, viewModel: WorkspaceViewModel) {
+    val palette = LocalHermexPalette.current
     val files = status.files.orEmpty()
+    var actionFile by remember { mutableStateOf<com.hermexapp.android.model.GitFile?>(null) }
+    var showCommit by remember { mutableStateOf(false) }
+
     Column(modifier = Modifier.fillMaxSize()) {
         Text(
             buildString {
@@ -194,6 +214,20 @@ private fun GitStatusList(status: com.hermexapp.android.model.GitStatus, viewMod
             modifier = Modifier.padding(16.dp),
             style = MaterialTheme.typography.titleSmall,
         )
+        // Remote + commit actions.
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            TextButton(onClick = { viewModel.fetch() }) { Text("Fetch") }
+            TextButton(onClick = { viewModel.pull() }) { Text("Pull") }
+            TextButton(onClick = { viewModel.push() }) { Text("Push") }
+            if (files.isNotEmpty()) {
+                TextButton(onClick = { showCommit = true }) {
+                    Text("Commit", color = palette.accent)
+                }
+            }
+        }
         HorizontalDivider()
         if (files.isEmpty()) {
             EmptyPanel("Working tree clean.")
@@ -203,14 +237,15 @@ private fun GitStatusList(status: com.hermexapp.android.model.GitStatus, viewMod
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable {
-                                file.path?.let { viewModel.openDiff(it, file.staged) }
-                            }
+                            .combinedClickable(
+                                onClick = { file.path?.let { viewModel.openDiff(it, file.staged) } },
+                                onLongClick = { actionFile = file },
+                            )
                             .padding(horizontal = 16.dp, vertical = 10.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
                         Text(
-                            "${file.status ?: "M"}  ${file.path ?: "?"}",
+                            "${if (file.staged == true) "●" else "○"} ${file.status ?: "M"}  ${file.path ?: "?"}",
                             style = MaterialTheme.typography.bodySmall,
                             fontFamily = FontFamily.Monospace,
                             maxLines = 1,
@@ -220,13 +255,60 @@ private fun GitStatusList(status: com.hermexapp.android.model.GitStatus, viewMod
                         Text(
                             "+${file.additions ?: 0} −${file.deletions ?: 0}",
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = palette.textSecondary,
                         )
                     }
                     HorizontalDivider()
                 }
             }
         }
+    }
+
+    actionFile?.let { file ->
+        val path = file.path
+        AlertDialog(
+            onDismissRequest = { actionFile = null },
+            confirmButton = { TextButton(onClick = { actionFile = null }) { Text("Cancel") } },
+            title = { Text(path ?: "File", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            text = {
+                Column {
+                    if (file.staged == true) {
+                        TextButton(onClick = { path?.let(viewModel::unstage); actionFile = null }) {
+                            Text("Unstage")
+                        }
+                    } else {
+                        TextButton(onClick = { path?.let(viewModel::stage); actionFile = null }) {
+                            Text("Stage")
+                        }
+                    }
+                    TextButton(onClick = { path?.let(viewModel::discard); actionFile = null }) {
+                        Text("Discard changes", color = palette.destructive)
+                    }
+                }
+            },
+        )
+    }
+
+    if (showCommit) {
+        var message by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showCommit = false },
+            title = { Text("Commit") },
+            text = {
+                OutlinedTextField(
+                    value = message,
+                    onValueChange = { message = it },
+                    placeholder = { Text("Commit message") },
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { viewModel.commit(message.trim()); showCommit = false },
+                    enabled = message.isNotBlank(),
+                ) { Text("Commit") }
+            },
+            dismissButton = { TextButton(onClick = { showCommit = false }) { Text("Cancel") } },
+        )
     }
 }
 

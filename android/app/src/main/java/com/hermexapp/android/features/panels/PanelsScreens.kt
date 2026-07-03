@@ -16,8 +16,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -26,6 +28,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
@@ -115,6 +120,8 @@ fun PanelScreen(kind: PanelKind, viewModel: PanelsViewModel, onClose: () -> Unit
 private fun TasksPanel(state: PanelsViewModel.UiState, viewModel: PanelsViewModel) {
     val palette = LocalHermexPalette.current
     val runningCount = state.cronJobs.count { it.state == "running" }
+    // null = closed; CronJob = editing that job; a sentinel blank job = creating.
+    var editor by remember { mutableStateOf<CronEditorTarget?>(null) }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -141,26 +148,113 @@ private fun TasksPanel(state: PanelsViewModel.UiState, viewModel: PanelsViewMode
         }
 
         item {
-            Text(
-                "Scheduled Jobs",
-                style = MaterialTheme.typography.titleMedium,
-                color = palette.textSecondary,
-                modifier = Modifier.padding(top = 8.dp),
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Scheduled Jobs",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = palette.textSecondary,
+                )
+                TextButton(onClick = { editor = CronEditorTarget.New }) {
+                    Text("+ New", color = palette.accent)
+                }
+            }
         }
 
         if (state.cronJobs.isEmpty()) {
             item { CenteredNote("No scheduled tasks on this server.") }
         } else {
             items(state.cronJobs, key = { it.stableId }) { job ->
-                CronJobCard(job, viewModel)
+                CronJobCard(job, viewModel, onEdit = { editor = CronEditorTarget.Edit(job) })
             }
         }
     }
+
+    editor?.let { target ->
+        CronEditorDialog(
+            target = target,
+            onDismiss = { editor = null },
+            onSave = { prompt, schedule, name ->
+                when (target) {
+                    CronEditorTarget.New -> viewModel.createCronJob(prompt, schedule, name)
+                    is CronEditorTarget.Edit ->
+                        target.job.jobId?.let { viewModel.updateCronJob(it, prompt, schedule, name) }
+                }
+                editor = null
+            },
+            onDelete = {
+                (target as? CronEditorTarget.Edit)?.job?.jobId?.let(viewModel::deleteCronJob)
+                editor = null
+            },
+        )
+    }
+}
+
+private sealed class CronEditorTarget {
+    data object New : CronEditorTarget()
+    data class Edit(val job: CronJob) : CronEditorTarget()
 }
 
 @Composable
-private fun CronJobCard(job: CronJob, viewModel: PanelsViewModel) {
+private fun CronEditorDialog(
+    target: CronEditorTarget,
+    onDismiss: () -> Unit,
+    onSave: (prompt: String, schedule: String, name: String?) -> Unit,
+    onDelete: () -> Unit,
+) {
+    val palette = LocalHermexPalette.current
+    val existing = (target as? CronEditorTarget.Edit)?.job
+    var name by remember { mutableStateOf(existing?.name.orEmpty()) }
+    var prompt by remember { mutableStateOf(existing?.prompt.orEmpty()) }
+    var schedule by remember { mutableStateOf(existing?.scheduleDisplay.orEmpty()) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (existing == null) "New task" else "Edit task") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Name (optional)") },
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    value = schedule,
+                    onValueChange = { schedule = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Schedule (cron, e.g. 0 9 * * *)") },
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    value = prompt,
+                    onValueChange = { prompt = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Prompt") },
+                )
+                if (existing != null) {
+                    TextButton(onClick = onDelete) {
+                        Text("Delete task", color = palette.destructive)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onSave(prompt.trim(), schedule.trim(), name.trim().ifBlank { null }) },
+                enabled = prompt.isNotBlank() && schedule.isNotBlank(),
+            ) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun CronJobCard(job: CronJob, viewModel: PanelsViewModel, onEdit: () -> Unit) {
     val palette = LocalHermexPalette.current
     val paused = job.enabled == false || job.state == "paused"
 
@@ -216,6 +310,7 @@ private fun CronJobCard(job: CronJob, viewModel: PanelsViewModel) {
                     } else {
                         TextButton(onClick = { viewModel.pauseCronJob(id) }) { Text("Pause") }
                     }
+                    TextButton(onClick = onEdit) { Text("Edit") }
                 }
             }
         }

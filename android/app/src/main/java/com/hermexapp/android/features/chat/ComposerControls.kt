@@ -61,6 +61,7 @@ fun ComposerBar(
     var openPicker by remember { mutableStateOf<PickerKind?>(null) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val voice = rememberVoiceInputController(onText = viewModel::appendDictatedText)
 
     val imagePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia(),
@@ -132,6 +133,18 @@ fun ComposerBar(
                         onClick = { openPicker = PickerKind.MODEL },
                     )
                     androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
+
+                    // Voice dictation → populates the composer only (iOS voice-input contract).
+                    if (voice.isAvailable) {
+                        Text(
+                            if (voice.isListening) "◉" else "🎤",
+                            fontSize = 20.sp,
+                            color = if (voice.isListening) palette.destructive else palette.textSecondary,
+                            modifier = Modifier.clickable {
+                                if (voice.isListening) voice.stop() else voice.start()
+                            },
+                        )
+                    }
 
                     // Send when there's a draft; stop when idle-handed mid-run.
                     val showStop = state.isStreaming &&

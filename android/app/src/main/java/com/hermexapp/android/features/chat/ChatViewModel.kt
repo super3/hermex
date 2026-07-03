@@ -3,7 +3,11 @@ package com.hermexapp.android.features.chat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.hermexapp.android.features.sessionlist.SessionRepository
+import com.hermexapp.android.model.ApprovalChoice
 import com.hermexapp.android.model.ChatMessage
+import com.hermexapp.android.model.ContextWindowSnapshot
+import com.hermexapp.android.model.PendingApproval
+import com.hermexapp.android.model.PendingClarification
 import com.hermexapp.android.model.SessionDetail
 import com.hermexapp.android.network.ApiClient
 import com.hermexapp.android.network.ApiError
@@ -12,6 +16,9 @@ import com.hermexapp.android.network.SseEvent
 import com.hermexapp.android.network.SseStreaming
 import com.hermexapp.android.network.cancelChat
 import com.hermexapp.android.network.chatStreamUrl
+import com.hermexapp.android.network.respondApproval
+import com.hermexapp.android.network.respondClarification
+import com.hermexapp.android.network.retrySession
 import com.hermexapp.android.network.startChat
 import com.hermexapp.android.network.steerChat
 import com.hermexapp.android.network.uploadFile
@@ -20,6 +27,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonElement
 
 /**
  * Phase 4 chat state machine: transcript load, send → `/api/chat/start` →
@@ -80,6 +88,11 @@ class ChatViewModel(
         val isUploadingAttachment: Boolean = false,
         /** Set once per completed run so the screen can fire a completion haptic/notification. */
         val finishedRunCount: Int = 0,
+        /** Context-window usage from the last `done` event (Phase 9.2 indicator). */
+        val contextWindow: ContextWindowSnapshot? = null,
+        /** A pending approval/clarification prompt raised mid-run; null when none. */
+        val pendingApproval: PendingApproval? = null,
+        val pendingClarification: PendingClarification? = null,
     ) {
         val slashSuggestions: List<com.hermexapp.android.model.AgentCommand>
             get() = composerConfig.slashSuggestions(composerText)
@@ -94,6 +107,16 @@ class ChatViewModel(
     private fun nextId(prefix: String): String = "$prefix-${entryCounter++}"
 
     fun updateComposerText(value: String) = _uiState.update { it.copy(composerText = value) }
+
+    /** Appends dictated text (from on-device speech recognition) into the composer. */
+    fun appendDictatedText(text: String) {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return
+        _uiState.update {
+            val separator = if (it.composerText.isBlank() || it.composerText.endsWith(" ")) "" else " "
+            it.copy(composerText = it.composerText + separator + trimmed)
+        }
+    }
 
     fun load() {
         viewModelScope.launch { loadNow() }
@@ -295,6 +318,8 @@ class ChatViewModel(
             is SseEvent.ToolCompleted -> upsertTool(event.tool, running = false)
             is SseEvent.Title -> _uiState.update { it.copy(title = event.title ?: it.title) }
             is SseEvent.Done -> applyDone(event)
+            is SseEvent.ApprovalPending -> applyApproval(event.payload)
+            is SseEvent.ClarificationPending -> applyClarification(event.payload)
             is SseEvent.PendingSteerLeftover ->
                 _uiState.update { it.copy(composerText = event.text) }
             SseEvent.StreamEnd -> {
@@ -389,18 +414,113 @@ class ChatViewModel(
         }
     }
 
-    /** `done` carries the authoritative session — rebuild the transcript from it. */
+    /** `done` carries the authoritative session + usage — rebuild + update the context indicator. */
     private fun applyDone(event: SseEvent.Done) {
+        val usage = event.usage?.let {
+            try {
+                ApiJson.decodeFromJsonElement(ContextWindowSnapshot.serializer(), it)
+            } catch (_: Exception) {
+                null
+            }
+        }
         val session = event.session?.let {
             try {
                 ApiJson.decodeFromJsonElement(SessionDetail.serializer(), it)
             } catch (_: Exception) {
                 null
             }
-        } ?: return
+        }
 
-        _uiState.update {
-            it.copy(title = session.title ?: it.title, entries = entriesFromDetail(session))
+        _uiState.update { state ->
+            state.copy(
+                title = session?.title ?: state.title,
+                entries = if (session != null) entriesFromDetail(session) else state.entries,
+                contextWindow = usage ?: state.contextWindow,
+            )
+        }
+    }
+
+    private fun applyApproval(payload: JsonElement) {
+        val response = try {
+            ApiJson.decodeFromJsonElement(
+                com.hermexapp.android.model.ApprovalPendingResponse.serializer(), payload,
+            )
+        } catch (_: Exception) {
+            null
+        }
+        val pending = response?.pending
+            ?: try { ApiJson.decodeFromJsonElement(PendingApproval.serializer(), payload) } catch (_: Exception) { null }
+        if (pending != null && !pending.isEmpty) {
+            _uiState.update { it.copy(pendingApproval = pending) }
+        }
+    }
+
+    private fun applyClarification(payload: JsonElement) {
+        val response = try {
+            ApiJson.decodeFromJsonElement(
+                com.hermexapp.android.model.ClarificationPendingResponse.serializer(), payload,
+            )
+        } catch (_: Exception) {
+            null
+        }
+        val pending = response?.pending
+            ?: try { ApiJson.decodeFromJsonElement(PendingClarification.serializer(), payload) } catch (_: Exception) { null }
+        if (pending != null && !pending.isEmpty) {
+            _uiState.update { it.copy(pendingClarification = pending) }
+        }
+    }
+
+    /** Responds to a pending approval, then clears the overlay. */
+    fun respondToApproval(choice: ApprovalChoice) {
+        val pending = _uiState.value.pendingApproval ?: return
+        _uiState.update { it.copy(pendingApproval = null) }
+        viewModelScope.launch {
+            try {
+                client.respondApproval(sessionId, choice, pending.approvalId)
+            } catch (e: ApiError) {
+                onAuthError(e)
+                _uiState.update { it.copy(errorMessage = e.userMessage) }
+            }
+        }
+    }
+
+    /** Answers a pending clarification (free text or a picked choice), then clears the overlay. */
+    fun respondToClarification(answer: String) {
+        val pending = _uiState.value.pendingClarification ?: return
+        _uiState.update { it.copy(pendingClarification = null) }
+        viewModelScope.launch {
+            try {
+                client.respondClarification(sessionId, answer, pending.clarifyId)
+            } catch (e: ApiError) {
+                onAuthError(e)
+                _uiState.update { it.copy(errorMessage = e.userMessage) }
+            }
+        }
+    }
+
+    /**
+     * Regenerate: drop the last assistant turn via `/api/session/retry`, then
+     * re-run the returned user text through the normal start/stream path
+     * (mirrors the iOS regenerate flow).
+     */
+    fun regenerate() {
+        if (_uiState.value.isStreaming) return
+        viewModelScope.launch {
+            try {
+                val retry = client.retrySession(sessionId)
+                val text = retry.lastUserText
+                if (retry.ok != true || text.isNullOrBlank()) {
+                    _uiState.update { it.copy(errorMessage = retry.error ?: "Nothing to regenerate.") }
+                    return@launch
+                }
+                // Reload the truncated transcript, then send the prior prompt again.
+                loadNow()
+                _uiState.update { it.copy(composerText = text) }
+                sendNow()
+            } catch (e: ApiError) {
+                onAuthError(e)
+                _uiState.update { it.copy(errorMessage = e.userMessage) }
+            }
         }
     }
 

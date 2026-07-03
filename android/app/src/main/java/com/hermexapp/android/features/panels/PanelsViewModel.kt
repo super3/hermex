@@ -14,7 +14,10 @@ import com.hermexapp.android.network.insights
 import com.hermexapp.android.network.memory
 import com.hermexapp.android.network.pauseCron
 import com.hermexapp.android.network.resumeCron
+import com.hermexapp.android.network.createCron
+import com.hermexapp.android.network.deleteCron
 import com.hermexapp.android.network.runCron
+import com.hermexapp.android.network.updateCron
 import com.hermexapp.android.network.skillContent
 import com.hermexapp.android.network.skills
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -51,6 +54,23 @@ class PanelsViewModel(
         val jobs = client.crons().jobs.orEmpty()
         _uiState.update { it.copy(cronJobs = jobs, isLoading = false) }
     }
+
+    fun createCronJob(prompt: String, schedule: String, name: String?) = cronAction {
+        val r = client.createCron(prompt = prompt, schedule = schedule, name = name?.takeIf { it.isNotBlank() })
+        _uiState.update { it.copy(noticeMessage = r.error ?: "Task created.") }
+    }
+
+    fun updateCronJob(jobId: String, prompt: String?, schedule: String?, name: String?) = cronAction {
+        val r = client.updateCron(
+            jobId = jobId,
+            prompt = prompt?.takeIf { it.isNotBlank() },
+            schedule = schedule?.takeIf { it.isNotBlank() },
+            name = name?.takeIf { it.isNotBlank() },
+        )
+        _uiState.update { it.copy(noticeMessage = r.error ?: "Task updated.") }
+    }
+
+    fun deleteCronJob(jobId: String) = cronAction { client.deleteCron(jobId) }
 
     fun runCronJob(jobId: String) = cronAction { client.runCron(jobId).also { r ->
         _uiState.update { it.copy(noticeMessage = r.error ?: "Job started.") }

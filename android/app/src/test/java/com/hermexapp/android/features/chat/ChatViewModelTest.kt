@@ -175,7 +175,12 @@ class ChatViewModelTest {
                 {"role": "assistant", "content": "the real final answer"}
             ]}
         """.trimIndent()
-        sse.emit(SseEvent.Done(com.hermexapp.android.network.ApiJson.parseToJsonElement(sessionJson)))
+        sse.emit(
+            SseEvent.Done(
+                com.hermexapp.android.network.ApiJson.parseToJsonElement(sessionJson),
+                usage = null,
+            ),
+        )
         sse.emit(SseEvent.StreamEnd)
 
         val state = viewModel.uiState.value

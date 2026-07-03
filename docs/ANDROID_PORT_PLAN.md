@@ -202,38 +202,45 @@ development at the same cadence as the iOS build). Check phases off as they land
   - [x] SSE client (okhttp-sse): token / reasoning / interim_assistant / tool /
         tool_complete / title / done / cancel / stream_end / error events,
         unknown types ignored
-  - [ ] Streaming markdown rendering — transcript renders plain text for now
-        (this is the plan's flagged risk; it lands as its own slice)
+  - [x] Streaming markdown rendering — dependency-free, streaming-tolerant
+        renderer (headings, bold/italic/inline-code/links, fenced code blocks,
+        bullet/ordered lists, blockquotes, pipe tables); an unterminated fence
+        or half-written table renders gracefully mid-stream
   - [x] Thinking (reasoning) entries + live tool-call cards (running/duration/
         error, updated in place by stable id)
   - [x] Stop (`/api/chat/cancel`) and steer-while-running (`/api/chat/steer`)
-  - [ ] Approvals & clarifications overlays (deferred — pending runs show
-        their events but can't be approved from the app yet)
+  - [x] Approvals & clarifications overlays — in-band `approval`/`clarify`/
+        `initial` SSE events raise a dialog (Once/Session/Always/Deny; free-text
+        + offered-choice chips) answered via `/api/approval/respond` and
+        `/api/clarify/respond`
 - [x] **Phase 5 — Composer** (4–5 days)
   - [x] Model/workspace/profile selectors riding on `/api/chat/start`
         (reasoning-effort selector deferred)
   - [x] Attachments: multipart upload + photo picking (arbitrary-file picking
         deferred)
-  - [x] Slash-command autocomplete from `/api/commands` (context-window
-        indicator deferred)
-  - [ ] Voice input (deferred per plan §2 — v1-cut item)
+  - [x] Slash-command autocomplete from `/api/commands`
+  - [x] Context-window indicator (from the `done` event's `usage`, "N% context")
+  - [x] Voice input — on-device `SpeechRecognizer` dictation into the composer
+        (populates text only; server chat behavior unchanged)
 - [x] **Phase 6 — Workspace + git** (3–4 days)
   - [x] File browser + monospace file preview
-  - [x] Git status / colored unified diff / branches — read-only; stage/commit/
-        checkout mutations deferred
+  - [x] Git status / colored unified diff / branches
+  - [x] Git mutations: stage/unstage/discard (per-file long-press), commit,
+        fetch/pull/push
 - [x] **Phase 7 — Server panels** (3 days)
-  - [x] Tasks: cron list + run/pause/resume (create/edit deferred)
+  - [x] Tasks: cron list + run/pause/resume + create/edit/delete
   - [x] Skills (browse + content); Memory; Insights summary
 - [x] **Phase 8 — Settings + conversation actions** (2–3 days)
   - [x] Settings: server info, default-model picker, theme (system/light/dark);
         session rename/delete/pin/archive via long-press
-  - [x] Message long-press copy (regenerate/listen deferred)
+  - [x] Message long-press: copy, regenerate (`/api/session/retry` → re-run),
+        and listen (`TextToSpeech`)
 - [x] **Phase 9 — Platform integration** (2–3 days)
-  - [x] Share target (text → new chat with prefilled composer; image share-in
-        deferred); notification tap deep-links into its session (a public
-        `hermes-agent://` scheme filter is deferred)
-  - [x] Response-complete notifications with POST_NOTIFICATIONS handling,
-        posted only when backgrounded (ongoing-run Live Update deferred)
+  - [x] Share target (text and image → new chat, image uploaded + attached);
+        notification tap deep-links into its session (a public `hermes-agent://`
+        scheme filter is deferred)
+  - [x] Response-complete notifications (POST_NOTIFICATIONS, posted only when
+        backgrounded) + ongoing-run foreground service while streaming
 - [ ] **Phase 10 — Polish + release prep** (3–4 days)
   - [x] Haptics (send/stop/complete/long-press), animations (crossfade nav,
         animated banners, list item placement), empty/error states with retry

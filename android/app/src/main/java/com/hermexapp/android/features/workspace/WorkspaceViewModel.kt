@@ -5,15 +5,23 @@ import androidx.lifecycle.viewModelScope
 import com.hermexapp.android.model.FileResponse
 import com.hermexapp.android.model.GitBranches
 import com.hermexapp.android.model.GitDiff
-import com.hermexapp.android.model.GitStatus
 import com.hermexapp.android.model.WorkspaceEntry
 import com.hermexapp.android.network.ApiClient
 import com.hermexapp.android.network.ApiError
+import com.hermexapp.android.model.GitStatus
 import com.hermexapp.android.network.directoryList
 import com.hermexapp.android.network.file
 import com.hermexapp.android.network.gitBranches
+import com.hermexapp.android.network.gitCheckout
+import com.hermexapp.android.network.gitCommit
 import com.hermexapp.android.network.gitDiff
+import com.hermexapp.android.network.gitDiscard
+import com.hermexapp.android.network.gitFetch
+import com.hermexapp.android.network.gitPull
+import com.hermexapp.android.network.gitPush
+import com.hermexapp.android.network.gitStage
 import com.hermexapp.android.network.gitStatus
+import com.hermexapp.android.network.gitUnstage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -41,6 +49,7 @@ class WorkspaceViewModel(
         val openDiff: GitDiff? = null,
         val isLoading: Boolean = false,
         val errorMessage: String? = null,
+        val noticeMessage: String? = null,
     )
 
     private val _uiState = MutableStateFlow(UiState())
@@ -137,4 +146,44 @@ class WorkspaceViewModel(
     }
 
     fun closeDiff() = _uiState.update { it.copy(openDiff = null) }
+
+    // ── Git mutations (Phase 6 deferred slice) ──
+
+    fun stage(path: String) = gitAction { client.gitStage(sessionId, listOf(path)).git }
+    fun unstage(path: String) = gitAction { client.gitUnstage(sessionId, listOf(path)).git }
+    fun discard(path: String) = gitAction { client.gitDiscard(sessionId, listOf(path)).git }
+    fun fetch() = gitAction { client.gitFetch(sessionId).git }
+    fun pull() = gitAction { client.gitPull(sessionId).git }
+    fun push() = gitAction { client.gitPush(sessionId).git }
+
+    fun commit(message: String) = gitAction {
+        val response = client.gitCommit(sessionId, message)
+        _uiState.update {
+            it.copy(noticeMessage = response.shortSha?.let { sha -> "Committed $sha" } ?: "Committed")
+        }
+        response.resolvedStatus
+    }
+
+    fun checkout(ref: String) = gitAction { client.gitCheckout(sessionId, ref).resolvedStatus }
+
+    /**
+     * Runs a git write and refreshes status from the response when it carries
+     * one, else re-fetches. Errors surface without wiping the current view.
+     */
+    private fun gitAction(action: suspend () -> GitStatus?) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(errorMessage = null, noticeMessage = null) }
+            try {
+                val status = action()
+                if (status != null) {
+                    _uiState.update { it.copy(gitStatus = status) }
+                } else {
+                    loadGitNow()
+                }
+            } catch (e: ApiError) {
+                onAuthError(e)
+                _uiState.update { it.copy(errorMessage = e.userMessage) }
+            }
+        }
+    }
 }

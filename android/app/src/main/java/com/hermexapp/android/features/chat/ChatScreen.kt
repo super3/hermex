@@ -17,11 +17,13 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -55,6 +57,7 @@ fun ChatScreen(
     val listState = rememberLazyListState()
     val haptics = LocalHapticFeedback.current
     val palette = LocalHermexPalette.current
+    val speech = rememberSpeechController()
 
     LaunchedEffect(Unit) { viewModel.load() }
     DisposableEffect(Unit) { onDispose { viewModel.teardown() } }
@@ -133,9 +136,24 @@ fun ChatScreen(
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     items(state.entries, key = { it.id }) { entry ->
-                        TimelineEntryView(entry, isStreamingRun = state.isStreaming)
+                        TimelineEntryView(
+                            entry = entry,
+                            isStreamingRun = state.isStreaming,
+                            onRegenerate = viewModel::regenerate,
+                            onListen = { speech.speak(it) },
+                        )
                     }
                 }
+            }
+
+            // Context-window indicator, just above the composer (Phase 9.2).
+            state.contextWindow?.compactIndicator?.let { indicator ->
+                Text(
+                    indicator,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = palette.textSecondary,
+                )
             }
 
             SlashSuggestionList(
@@ -151,11 +169,24 @@ fun ChatScreen(
             )
         }
     }
+
+    // Mid-run interaction overlays (Phase 4 deferred items).
+    state.pendingApproval?.let { approval ->
+        ApprovalOverlay(approval = approval, onRespond = viewModel::respondToApproval)
+    }
+    state.pendingClarification?.let { clarification ->
+        ClarificationOverlay(clarification = clarification, onRespond = viewModel::respondToClarification)
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun TimelineEntryView(entry: TimelineEntry, isStreamingRun: Boolean) {
+private fun TimelineEntryView(
+    entry: TimelineEntry,
+    isStreamingRun: Boolean,
+    onRegenerate: () -> Unit = {},
+    onListen: (String) -> Unit = {},
+) {
     val clipboard = LocalClipboardManager.current
     val haptics = LocalHapticFeedback.current
     val palette = LocalHermexPalette.current
@@ -187,12 +218,35 @@ private fun TimelineEntryView(entry: TimelineEntry, isStreamingRun: Boolean) {
             }
         }
 
-        // iOS assistant text: plain on the black canvas, no bubble.
-        is TimelineEntry.AssistantMessage -> Text(
-            entry.text + if (entry.isStreaming) " ▍" else "",
-            style = MaterialTheme.typography.bodyLarge,
-            modifier = copyModifier(entry.text),
-        )
+        // Assistant text: streaming markdown on the black canvas, no bubble.
+        // Long-press opens Copy / Regenerate / Listen.
+        is TimelineEntry.AssistantMessage -> {
+            var showActions by remember(entry.id) { mutableStateOf(false) }
+            Column(
+                modifier = Modifier.combinedClickable(
+                    onClick = {},
+                    onLongClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        showActions = true
+                    },
+                ),
+            ) {
+                com.hermexapp.android.ui.markdown.MarkdownText(
+                    text = entry.text + if (entry.isStreaming) " ▍" else "",
+                )
+            }
+            if (showActions) {
+                AssistantActionsDialog(
+                    onDismiss = { showActions = false },
+                    onCopy = {
+                        clipboard.setText(AnnotatedString(entry.text)); showActions = false
+                    },
+                    onRegenerate = { onRegenerate(); showActions = false },
+                    onListen = { onListen(entry.text); showActions = false },
+                    showRegenerate = !isStreamingRun,
+                )
+            }
+        }
 
         // iOS "Thinking" card: dark, collapsible, preview in the header.
         is TimelineEntry.Reasoning -> ThinkingCard(entry, isStreamingRun)
@@ -296,4 +350,29 @@ private fun ThinkingCard(entry: TimelineEntry.Reasoning, isStreamingRun: Boolean
             }
         }
     }
+}
+
+/** Long-press menu on an assistant message: Copy / Regenerate / Listen (iOS §8.3). */
+@Composable
+private fun AssistantActionsDialog(
+    onDismiss: () -> Unit,
+    onCopy: () -> Unit,
+    onRegenerate: () -> Unit,
+    onListen: () -> Unit,
+    showRegenerate: Boolean,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        title = { Text("Message") },
+        text = {
+            Column {
+                TextButton(onClick = onCopy) { Text("Copy") }
+                TextButton(onClick = onListen) { Text("Listen") }
+                if (showRegenerate) {
+                    TextButton(onClick = onRegenerate) { Text("Regenerate") }
+                }
+            }
+        },
+    )
 }

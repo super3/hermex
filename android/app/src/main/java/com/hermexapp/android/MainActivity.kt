@@ -19,8 +19,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.hermexapp.android.auth.AuthManager
 import com.hermexapp.android.config.ThemeChoice
 import com.hermexapp.android.features.chat.ChatScreen
@@ -90,6 +94,14 @@ class MainActivity : ComponentActivity() {
         when {
             intent.action == Intent.ACTION_SEND && intent.type?.startsWith("text/") == true ->
                 container.sharedDraftStore.offer(intent.getStringExtra(Intent.EXTRA_TEXT))
+            intent.action == Intent.ACTION_SEND && intent.type?.startsWith("image/") == true -> {
+                @Suppress("DEPRECATION")
+                val uri = intent.getParcelableExtra<android.net.Uri>(Intent.EXTRA_STREAM)
+                container.sharedDraftStore.offer(
+                    text = intent.getStringExtra(Intent.EXTRA_TEXT),
+                    imageUri = uri?.toString(),
+                )
+            }
             intent.hasExtra(RunNotifications.EXTRA_SESSION_ID) ->
                 pendingSessionFromNotification = intent.getStringExtra(RunNotifications.EXTRA_SESSION_ID)
         }
@@ -130,13 +142,25 @@ private fun ConnectedRoot(container: AppContainer, server: HttpUrl) {
         ).also { it.refresh() }
     }
 
-    // A shared text (ACTION_SEND) becomes a fresh chat with the composer prefilled.
-    val pendingShare by container.sharedDraftStore.pendingText.collectAsState()
+    // A shared text or image (ACTION_SEND) becomes a fresh chat with the
+    // composer prefilled (and the image uploaded + attached).
+    val pendingShare by container.sharedDraftStore.pending.collectAsState()
+    val context = LocalContext.current
     LaunchedEffect(pendingShare) {
         if (pendingShare != null) {
-            val draft = container.sharedDraftStore.consume() ?: return@LaunchedEffect
+            val content = container.sharedDraftStore.consume() ?: return@LaunchedEffect
             val sessionId = sessionListViewModel.createSessionNow() ?: return@LaunchedEffect
-            sharePrefill = draft
+            sharePrefill = content.text
+            shareImageUpload = content.imageUri?.let { uriString ->
+                runCatching {
+                    val uri = android.net.Uri.parse(uriString)
+                    val bytes = withContext(Dispatchers.IO) {
+                        context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    }
+                    val name = uri.lastPathSegment?.substringAfterLast('/') ?: "shared-image.jpg"
+                    bytes?.let { it to name }
+                }.getOrNull()
+            }
             screen = Screen.Chat(sessionId)
         }
     }
@@ -159,6 +183,7 @@ private fun ConnectedRoot(container: AppContainer, server: HttpUrl) {
             )
 
             is Screen.Chat -> {
+                val appContext = LocalContext.current.applicationContext
                 val chatViewModel = remember(server, current.sessionId) {
                     ChatViewModel(
                         sessionId = current.sessionId,
@@ -168,6 +193,19 @@ private fun ConnectedRoot(container: AppContainer, server: HttpUrl) {
                         onAuthError = container.authManager::handleApiError,
                     ).also { vm ->
                         sharePrefill?.let { vm.updateComposerText(it); sharePrefill = null }
+                        shareImageUpload?.let { (bytes, name) ->
+                            shareImageUpload = null
+                            vm.viewModelScope.launch { vm.addAttachmentNow(bytes, name) }
+                        }
+                    }
+                }
+                val chatState by chatViewModel.uiState.collectAsState()
+                // Ongoing-run foreground service: alive only while streaming.
+                LaunchedEffect(chatState.isStreaming) {
+                    if (chatState.isStreaming) {
+                        com.hermexapp.android.platform.ActiveRunService.start(appContext, chatState.title)
+                    } else {
+                        com.hermexapp.android.platform.ActiveRunService.stop(appContext)
                     }
                 }
                 BackHandler { screen = Screen.SessionList }
@@ -228,5 +266,6 @@ private fun ConnectedRoot(container: AppContainer, server: HttpUrl) {
     }
 }
 
-/** Composer prefill handoff from a share, consumed on the next chat open. */
+/** Composer prefill + image handoff from a share, consumed on the next chat open. */
 private var sharePrefill: String? = null
+private var shareImageUpload: Pair<ByteArray, String>? = null
