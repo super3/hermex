@@ -25,9 +25,10 @@ object HermexColors {
 
     // iOS dark system palette.
     val Black = Color(0xFF000000)
-    val Surface1Dark = Color(0xFF1C1C1E) // cards, composer, thinking blocks
-    val Surface2Dark = Color(0xFF2C2C2E) // user bubbles, chips
-    val Surface3Dark = Color(0xFF3A3A3C) // circular buttons, send circle
+    val Surface1Dark = Color(0xFF1C1C1E) // cards, composer, thinking blocks (systemGray6)
+    val Surface2Dark = Color(0xFF2C2C2E) // chips, secondary containers (systemGray5)
+    val UserBubbleDark = Color(0xFF48484A) // iOS user message bubble (systemGray3)
+    val Surface3Dark = Color(0xFF3A3A3C) // circular buttons, send circle (systemGray4)
     val TextSecondaryDark = Color(0xFF8E8E93)
     val RedDark = Color(0xFFFF453A)
     val OrangeDark = Color(0xFFFF9F0A) // "Paused" badge
@@ -58,6 +59,11 @@ data class HermexPalette(
     /** The "✎ Chat" pill: white-on-black in dark mode, black-on-white in light. */
     val pillBackground: Color,
     val pillForeground: Color,
+    /** iOS inset-grouped list surfaces (Insights): white cards on a gray canvas
+     *  in light mode; #1C1C1E cards on pure black in dark. Inverts the plain
+     *  `canvas`/`card` relationship used by non-grouped screens. */
+    val groupedCanvas: Color,
+    val groupedCard: Color,
 )
 
 val LocalHermexPalette = staticCompositionLocalOf {
@@ -65,7 +71,7 @@ val LocalHermexPalette = staticCompositionLocalOf {
         accent = HermexColors.Gold,
         canvas = HermexColors.Black,
         card = HermexColors.Surface1Dark,
-        bubble = HermexColors.Surface2Dark,
+        bubble = HermexColors.UserBubbleDark,
         control = HermexColors.Surface3Dark,
         textSecondary = HermexColors.TextSecondaryDark,
         destructive = HermexColors.RedDark,
@@ -73,6 +79,8 @@ val LocalHermexPalette = staticCompositionLocalOf {
         success = HermexColors.GreenDark,
         pillBackground = HermexColors.White,
         pillForeground = HermexColors.Black,
+        groupedCanvas = HermexColors.Black,
+        groupedCard = HermexColors.Surface1Dark,
     )
 }
 
@@ -112,13 +120,21 @@ private val LightScheme = lightColorScheme(
     outline = HermexColors.Surface3Light,
 )
 
-/** iOS-like continuous rounding: large radii everywhere. */
+/**
+ * iOS-derived corner radii (points = dp), mapped to how each token is used:
+ *  - extraSmall 10 → icon tiles / small badges (InsightsView icon tile = 10)
+ *  - small 14      → assistant/status cards, search & composer text fields
+ *  - medium 20     → chat user message bubble (MessageBubbleView = 20)
+ *  - large 18      → cards & sections (SettingsView card = 18)
+ *  - extraLarge 22 → composer container (ChatComposerView = 22)
+ * Non-monotonic on purpose: iOS cards (18) are less round than user bubbles (20).
+ */
 private val HermexShapes = Shapes(
     extraSmall = RoundedCornerShape(10.dp),
     small = RoundedCornerShape(14.dp),
     medium = RoundedCornerShape(20.dp),
-    large = RoundedCornerShape(24.dp),
-    extraLarge = RoundedCornerShape(28.dp),
+    large = RoundedCornerShape(18.dp),
+    extraLarge = RoundedCornerShape(22.dp),
 )
 
 private val HermexTypography = Typography().let { base ->
@@ -144,7 +160,7 @@ fun HermexTheme(choice: ThemeChoice = ThemeChoice.SYSTEM, content: @Composable (
             accent = HermexColors.Gold,
             canvas = HermexColors.Black,
             card = HermexColors.Surface1Dark,
-            bubble = HermexColors.Surface2Dark,
+            bubble = HermexColors.UserBubbleDark,
             control = HermexColors.Surface3Dark,
             textSecondary = HermexColors.TextSecondaryDark,
             destructive = HermexColors.RedDark,
@@ -152,13 +168,15 @@ fun HermexTheme(choice: ThemeChoice = ThemeChoice.SYSTEM, content: @Composable (
             success = HermexColors.GreenDark,
             pillBackground = HermexColors.White,
             pillForeground = HermexColors.Black,
+            groupedCanvas = HermexColors.Black,
+            groupedCard = HermexColors.Surface1Dark,
         )
     } else {
         HermexPalette(
             accent = Color(0xFFB8960B),
             canvas = HermexColors.White,
             card = HermexColors.Surface1Light,
-            bubble = HermexColors.Surface2Light,
+            bubble = HermexColors.Surface1Light, // iOS user bubble light = systemGray6 (#F2F2F7)
             control = HermexColors.Surface3Light,
             textSecondary = HermexColors.TextSecondaryLight,
             destructive = HermexColors.RedLight,
@@ -166,6 +184,8 @@ fun HermexTheme(choice: ThemeChoice = ThemeChoice.SYSTEM, content: @Composable (
             success = HermexColors.GreenLight,
             pillBackground = HermexColors.Black,
             pillForeground = HermexColors.White,
+            groupedCanvas = HermexColors.Surface1Light, // #F2F2F7 canvas
+            groupedCard = HermexColors.White,            // white cards
         )
     }
 
