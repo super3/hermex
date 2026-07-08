@@ -1,6 +1,6 @@
 # Development
 
-This app is developed against a self-hosted `hermes-webui` server exposed over real HTTPS. See [`PROJECT_SPEC.md`](PROJECT_SPEC.md) for the full product and API plan.
+This app is developed against a self-hosted `hermes-webui` server exposed over real HTTPS. See [`PROJECT_SPEC.md`](../PROJECT_SPEC.md) for the full product and API plan.
 
 > Sections covering TestFlight and App Store Connect are **maintainer-only ops** — they require the maintainer's Apple Developer account and App Store Connect access. Contributors never need them to build, test, or run the app.
 
@@ -22,11 +22,11 @@ curl https://<your-server>/health
 
 ## Upstream Contract Pin
 
-The app is currently tested against `hermes-webui` tag `v0.51.85`, peeled commit `f1d399b437c1ca7fe4b6d2093aebe334c32f34a3`. The root [`UPSTREAM_TESTED_SHA`](UPSTREAM_TESTED_SHA) file is the machine-readable pin for future drift checks and contract tests.
+The app is currently tested against `hermes-webui` tag `v0.51.85`, peeled commit `f1d399b437c1ca7fe4b6d2093aebe334c32f34a3`. The root [`UPSTREAM_TESTED_SHA`](../UPSTREAM_TESTED_SHA) file is the machine-readable pin for future drift checks and contract tests.
 
 The pin was last verified against the upstream GitHub tag source during the 2026-05-05 audit slice; authenticated settings/version checks require server credentials.
 
-Contract test readiness is documented in [`CONTRACT_TESTS.md`](CONTRACT_TESTS.md). Current coverage verifies the app's endpoint matrix and native POST header shape with URLProtocol-backed tests; the full Docker-backed upstream contract target remains future hardening.
+Contract test readiness is documented in [`CONTRACT_TESTS.md`](../CONTRACT_TESTS.md). Current coverage verifies the app's endpoint matrix and native POST header shape with URLProtocol-backed tests; the full Docker-backed upstream contract target remains future hardening.
 
 ## SSE and Cloudflare Stream Verification
 
@@ -98,7 +98,7 @@ lsof -i :8787
 
 XcodeBuildMCP is the preferred local validation path for feature and bug-fix slices. The repo config lives in `.xcodebuildmcp/config.yaml` and sets:
 
-- Project: `HermesMobile.xcodeproj`
+- Project: `ios/HermesMobile.xcodeproj`
 - Scheme: `HermesMobile`
 - Configuration: `Debug`
 - Simulator: `iPhone 17`
@@ -116,7 +116,7 @@ After each completed implementation slice:
 Agent/MCP flow:
 
 - Call `session_show_defaults` before the first local build/run/test.
-- If defaults are missing, set project `HermesMobile.xcodeproj`, scheme `HermesMobile`, configuration `Debug`, simulator `iPhone 17`, and bundle ID `com.uzairansar.hermesmobile`.
+- If defaults are missing, set project `ios/HermesMobile.xcodeproj`, scheme `HermesMobile`, configuration `Debug`, simulator `iPhone 17`, and bundle ID `com.uzairansar.hermesmobile`.
 - Use `test_sim` for XCTest validation.
 - Use `build_run_sim` to build, install, launch, and open Simulator for manual testing.
 - Use `screenshot`, UI inspection, and log capture only when they help validate the slice.
@@ -174,7 +174,7 @@ xcrun simctl list devices available
 Build for an available iPhone simulator:
 
 ```zsh
-xcodebuild -project HermesMobile.xcodeproj -scheme HermesMobile -destination 'platform=iOS Simulator,name=iPhone 15' build
+xcodebuild -project ios/HermesMobile.xcodeproj -scheme HermesMobile -destination 'platform=iOS Simulator,name=iPhone 15' build
 ```
 
 If `iPhone 15` is not installed, choose a nearby available iPhone simulator.
@@ -231,20 +231,20 @@ Steps:
    focused or full tests based on the branch's risk.
 2. Use a unique `CURRENT_PROJECT_VERSION` for every upload — prefer a timestamp-like
    number such as `YYYYMMDDHHMM`.
-3. Archive with the reusable branch build config `Config/BranchTestFlight.xcconfig`:
+3. Archive with the reusable branch build config `ios/Config/BranchTestFlight.xcconfig`:
 
    ```zsh
-   xcodebuild -project HermesMobile.xcodeproj -scheme HermesMobile -configuration Release \
+   xcodebuild -project ios/HermesMobile.xcodeproj -scheme HermesMobile -configuration Release \
      -destination 'generic/platform=iOS' -archivePath build/HermesAgentBranch.xcarchive \
-     -xcconfig Config/BranchTestFlight.xcconfig CURRENT_PROJECT_VERSION=<unique-build-number> \
+     -xcconfig ios/Config/BranchTestFlight.xcconfig CURRENT_PROJECT_VERSION=<unique-build-number> \
      archive -allowProvisioningUpdates
    ```
 
-4. Upload with the reusable export config `Config/BranchTestFlightExportOptions.plist`:
+4. Upload with the reusable export config `ios/Config/BranchTestFlightExportOptions.plist`:
 
    ```zsh
    xcodebuild -exportArchive -archivePath build/HermesAgentBranch.xcarchive \
-     -exportOptionsPlist Config/BranchTestFlightExportOptions.plist \
+     -exportOptionsPlist ios/Config/BranchTestFlightExportOptions.plist \
      -exportPath build/HermesAgentBranchExport -allowProvisioningUpdates
    ```
 
@@ -291,7 +291,7 @@ GitHub Actions external-capable TestFlight flow:
 3. Add the same App Store Connect secrets used by the internal workflow to the `external-testflight` environment.
 4. Run the `External TestFlight` workflow manually from the GitHub Actions tab.
 5. Select `master` as the workflow ref, set `confirm_external_review` to `EXTERNAL_REVIEW`, and leave `build_number` blank so the workflow selects the next App Store Connect build number for the current marketing version.
-6. The workflow archives the Release build, uploads directly to App Store Connect, and uses `ci/ExternalTestFlightExportOptions.plist`, which intentionally does not set `testFlightInternalTestingOnly`.
+6. The workflow archives the Release build, uploads directly to App Store Connect, and uses `ios/ci/ExternalTestFlightExportOptions.plist`, which intentionally does not set `testFlightInternalTestingOnly`.
 7. Wait for App Store Connect processing to complete. Adding the build to an external group and submitting it to Beta App Review remain manual App Store Connect steps; the workflow does not invite testers.
 
 ## Full-App Manual Regression Checklist
